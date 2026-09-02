@@ -8,6 +8,7 @@ const S = {
   screen: 'home', session: null, lobby: null, view: null, status: '', error: '', chat: [], modal: null,
   name: localStorage.getItem('hh_name') || '', joinCode: (location.hash.slice(1) || '').toUpperCase().replace(/[^A-Z0-9]/g, ''),
   hover: null,
+  queue: [], animating: false, animId: 0, animatedSeq: -1, gameId: null,   // rejoueuse des tours
 };
 let trystero = null;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,12 +23,12 @@ const cardEl = (id, cls = '', extra = '') => { const c = CARDS[id]; return `<div
 const backEl = (cls = '') => `<div class="card back ${cls}"><img src="cards/dos.jpg" alt="" draggable="false"></div>`;
 const pname = pid => { const v = S.view || S.lobby; const p = (v.players || []).find(x => x.id === pid); return p ? p.name : (pid === 'pot' ? 'le pot' : pid); };
 const TYPES = ['bright', 'animal', 'ribbon', 'chaff'];
-const capsEl = ids => `<div class="caps">${TYPES.map(t => `<div class="grp">${ids.filter(id => CARDS[id].type === t).map(id => cardEl(id)).join('')}</div>`).join('')}</div>`;
+const capsEl = (ids, glow = null) => `<div class="caps">${TYPES.map(t => `<div class="grp">${ids.filter(id => CARDS[id].type === t).map(id => cardEl(id, glow && glow.has(id) ? 'anim' : '')).join('')}</div>`).join('')}</div>`;
 
 // ------------------------------------------------------------- session
 function callbacks() {
   return {
-    onView: v => { const wasEnd = S.view && S.view.round && S.view.round.phase === 'end' && S.view.round.month === (v.round && v.round.month); if (!wasEnd) S.modal = S.modal === 'closed' ? null : S.modal; S.view = v; if (v) S.screen = 'table'; S.error = ''; render(); },
+    onView: v => { S.queue.push(v); pump(); },
     onLobby: l => { S.lobby = l; if (!S.view || !l.started) S.screen = l.started && S.view ? 'table' : 'lobby'; render(); },
     onStatus: t => { S.status = t; render(); },
     onError: m => { S.error = m; render(); setTimeout(() => { if (S.error === m) { S.error = ''; render(); } }, 6000); },
@@ -49,6 +50,7 @@ async function create(form, local) {
   try {
     const name = saveName(form), settings = readSettings(form);
     const T = local ? null : await loadTrystero();
+    resetAnim();
     S.session = new Session({ code: local ? 'SOLO' : makeCode(), name, isHost: true, settings, trystero: T, local, ...callbacks() });
     if (local) { S.session.addBot(); S.session.addBot(); }
     S.screen = 'lobby'; S.status = local ? '' : 'Table créée. Partagez le code ou le lien.'; render();
@@ -59,12 +61,87 @@ async function join(form) {
     const name = saveName(form); const code = (new FormData(form).get('code') || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code.length < 4) throw new Error('Code de table invalide');
     const T = await loadTrystero();
+    resetAnim();
     S.session = new Session({ code, name, isHost: false, trystero: T, ...callbacks() });
     S.screen = 'lobby'; S.lobby = null; render();
   } catch (e) { S.error = e.message; render(); }
 }
 function act(a) { try { S.session.act(S.view.me, a); } catch (e) { S.error = e.message; render(); } }
-function leave() { if (S.session) S.session.leave(); S.session = null; S.view = null; S.lobby = null; S.screen = 'home'; S.chat = []; S.status = ''; location.hash = ''; render(); }
+function resetAnim() { S.queue = []; S.animating = false; S.animId++; S.animatedSeq = -1; S.gameId = null; }
+function leave() { resetAnim(); if (S.session) S.session.leave(); S.session = null; S.view = null; S.lobby = null; S.screen = 'home'; S.chat = []; S.status = ''; location.hash = ''; render(); }
+
+// ---------------------------------------------------- rejoueuse de tour
+// Le moteur résout « main → capture → pioche → capture » d'un bloc ; on rejoue les gestes
+// (turnEvents / lastTurnEvents) en étapes lisibles avant d'afficher la vue réelle.
+function applyView(v) {
+  const wasEnd = S.view && S.view.round && S.view.round.phase === 'end' && S.view.round.month === (v.round && v.round.month);
+  if (!wasEnd) S.modal = S.modal === 'closed' ? null : S.modal;
+  S.view = v; S.screen = 'table'; S.error = '';
+  for (const e of collectEvents(v)) S.animatedSeq = Math.max(S.animatedSeq, e.seq);
+  render();
+}
+function collectEvents(v) {
+  const r = v.round; if (!r) return [];
+  return [...(r.lastTurnEvents || []), ...(r.turnEvents || [])].sort((a, b) => a.seq - b.seq);
+}
+function pump() {
+  if (S.animating || !S.queue.length) return;
+  const v = S.queue.shift();
+  if (v.gameId !== S.gameId) { S.gameId = v.gameId; S.animatedSeq = -1; }
+  const events = collectEvents(v).filter(e => e.seq > S.animatedSeq);
+  const prev = S.view;
+  if (!v.round || !events.length || !prev || !prev.round || S.screen !== 'table' || prev.round.month !== v.round.month) { applyView(v); return pump(); }
+  const stages = buildStages(v, events, prev);
+  const id = ++S.animId; S.animating = true;
+  let i = 0;
+  const step = () => {
+    if (id !== S.animId) return;
+    if (i < stages.length) { const st = stages[i++]; S.view = st.view; render(); setTimeout(step, st.ms); }
+    else { S.animating = false; applyView(v); pump(); }
+  };
+  step();
+}
+function stageView(V, o) {
+  return { ...V, legal: [], anim: o.anim || null, log: o.log || V.log,
+    round: { ...V.round, phase: 'play', field: o.field, captures: o.caps, hand: o.hand, handCounts: o.handCounts, drawCount: o.drawCount,
+      turn: { pid: o.pid, step: 'anim', pending: null, drawn: null, played: null } } };
+}
+function buildStages(V, events, prev) {
+  const r = V.round, me = V.me, stages = [];
+  let field = r.field.slice(), caps = { ...r.captures }, hand = r.hand.slice(), handCounts = { ...r.handCounts }, drawCount = r.drawCount;
+  // retour à l'état d'avant les gestes
+  for (const e of events.slice().reverse()) {
+    if (e.captured.length) { const rm = new Set([e.card, ...e.captured]); caps = { ...caps, [e.pid]: (caps[e.pid] || []).filter(x => !rm.has(x)) }; field = [...field, ...e.captured]; }
+    else field = field.filter(x => x !== e.card);
+    if (e.source === 'draw') drawCount++;
+    else {
+      handCounts = { ...handCounts, [e.pid]: (handCounts[e.pid] || 0) + 1 };
+      if (e.pid === me) { const ph = prev.round.hand; hand = ph && ph.includes(e.card) ? ph.slice() : (hand.includes(e.card) ? hand : [...hand, e.card]); }
+    }
+  }
+  const snap = (pid, anim) => ({ pid, field, caps, hand, handCounts, drawCount, anim, log: prev.log });
+  for (const e of events) {
+    const mine = e.pid === me, month = CARDS[e.card].month;
+    if (e.source === 'hand') {
+      handCounts = { ...handCounts, [e.pid]: Math.max(0, (handCounts[e.pid] || 0) - 1) };
+      if (mine) hand = hand.filter(x => x !== e.card);
+      field = [...field, e.card];
+      stages.push({ ms: mine ? 500 : 800, view: stageView(V, snap(e.pid, { glowField: [e.card, ...e.captured], matchMonth: e.captured.length ? month : null })) });
+    } else {
+      const pending = prev.round.turn && prev.round.turn.pending && prev.round.turn.pending.card === e.card;
+      drawCount--;
+      if (!pending) stages.push({ ms: 800, view: stageView(V, snap(e.pid, { revealed: e.card, matchMonth: month })) });
+      field = [...field, e.card];
+      stages.push({ ms: pending ? 400 : 700, view: stageView(V, snap(e.pid, { glowField: [e.card, ...e.captured], matchMonth: e.captured.length ? month : null })) });
+    }
+    if (e.captured.length) {
+      const rm = new Set([e.card, ...e.captured]);
+      field = field.filter(x => !rm.has(x)); caps = { ...caps, [e.pid]: [...(caps[e.pid] || []), e.card, ...e.captured] };
+      stages.push({ ms: 600, view: stageView(V, snap(e.pid, { glowCaps: [e.card, ...e.captured] })) });
+    }
+  }
+  return stages;
+}
 
 // -------------------------------------------------------------- écrans
 function renderHome() {
@@ -162,18 +239,19 @@ function renderTable() {
 
   let center = '';
   if (r) {
+    const anim = v.anim || {}, glowF = new Set(anim.glowField || []), glowC = new Set(anim.glowCaps || []);
     const others = P.filter(p => p.id !== me && (r.phase === 'dropout' || active.has(p.id)));
-    const opps = `<div class="opps">${others.map(p => `<div class="panel opp ${turnPid === p.id ? 'turn' : ''}"><div class="hd"><b>${esc(p.name)}</b><span class="handcount" title="${r.handCounts[p.id]} cartes en main">${'<i></i>'.repeat(r.handCounts[p.id] || 0)}</span></div>${r.teyaku[p.id] && r.handCounts[p.id] === 7 ? `<div class="shown"><span class="small muted">montre :</span> ${(r.teyaku[p.id].A ? r.teyaku[p.id].A.cards : []).concat(r.teyaku[p.id].B ? r.teyaku[p.id].B.cards : []).filter((x, i, a) => a.indexOf(x) === i).map(id => cardEl(id)).join('')}</div>` : ''}${capsEl(r.captures[p.id] || [])}</div>`).join('')}</div>`;
+    const opps = `<div class="opps">${others.map(p => `<div class="panel opp ${turnPid === p.id ? 'turn' : ''}"><div class="hd"><b>${esc(p.name)}</b><span class="handcount" title="${r.handCounts[p.id]} cartes en main">${'<i></i>'.repeat(r.handCounts[p.id] || 0)}</span></div>${r.teyaku[p.id] && r.handCounts[p.id] === 7 ? `<div class="shown"><span class="small muted">montre :</span> ${(r.teyaku[p.id].A ? r.teyaku[p.id].A.cards : []).concat(r.teyaku[p.id].B ? r.teyaku[p.id].B.cards : []).filter((x, i, a) => a.indexOf(x) === i).map(id => cardEl(id)).join('')}</div>` : ''}${capsEl(r.captures[p.id] || [], glowC)}</div>`).join('')}</div>`;
 
     const pending = r.phase === 'play' && r.turn.step === 'choose' && r.turn.pid === me ? r.turn.pending : null;
     const placed = new Set([r.turn && r.turn.played, r.turn && r.turn.drawn].filter(x => x != null && r.field.includes(x)));
     const hoverMonth = S.hover != null ? CARDS[S.hover].month : null;
     const byMonth = {}; r.field.forEach(id => (byMonth[CARDS[id].month] ||= []).push(id));
     const fieldCards = Object.values(byMonth).map(ids => {
-      const els = ids.map(id => { let cls = ''; if (pending) cls = pending.matches.includes(id) ? 'choice' : 'dim'; else if (hoverMonth === CARDS[id].month) cls = 'match'; if (placed.has(id)) cls += ' new'; return cardEl(id, cls, pending && pending.matches.includes(id) ? `data-act="choose:${id}"` : ''); });
+      const els = ids.map(id => { let cls = ''; if (pending) cls = pending.matches.includes(id) ? 'choice' : 'dim'; else if (glowF.has(id)) cls = 'anim'; else if (anim.matchMonth === CARDS[id].month) cls = 'match'; else if (hoverMonth === CARDS[id].month) cls = 'match'; if (placed.has(id) && !v.anim) cls += ' new'; return cardEl(id, cls, pending && pending.matches.includes(id) ? `data-act="choose:${id}"` : ''); });
       return ids.length >= 3 ? `<div class="grp3">${els.join('')}</div>` : els.join('');
     }).join('');
-    const field = `<div class="field"><div class="pile">${r.drawCount ? backEl() : '<div class="card" style="opacity:.2"></div>'}<div class="small muted">pioche · ${r.drawCount}</div></div><div class="river">${pending ? cardEl(pending.card, 'new') : ''}${fieldCards}</div></div>`;
+    const field = `<div class="field"><div class="pile">${anim.revealed != null ? cardEl(anim.revealed, 'anim flip') : (r.drawCount ? backEl() : '<div class="card" style="opacity:.2"></div>')}<div class="small muted">pioche · ${r.drawCount}</div></div><div class="river">${pending ? cardEl(pending.card, 'new') : ''}${fieldCards}</div></div>`;
 
     const legal = v.legal || [];
     const myTurn = turnPid === me;
@@ -191,7 +269,7 @@ function renderTable() {
     }
     const myTeyaku = r.hand.length === 7 && r.phase !== 'end' ? detectTeyaku(r.hand) : null;
     const mine = `<div class="panel mine"><div class="hd"><b>${esc(pname(me))}</b><span class="kan">${fmt(v.scores[me], true)}</span>${tagsOf(me)}${myTeyaku && myTeyaku.total && !r.teyaku[me] ? `<span class="small muted">main : ${[myTeyaku.A && myTeyaku.A.name, myTeyaku.B && myTeyaku.B.name].filter(Boolean).join(' + ')} (${myTeyaku.total} kan)</span>` : ''}</div>
-      ${capsEl(r.captures[me] || [])}
+      ${capsEl(r.captures[me] || [], glowC)}
       <div class="hand">${r.hand.map(id => cardEl(id, myTurn && r.phase === 'play' && r.turn.step === 'hand' ? 'playable' : '', myTurn && r.phase === 'play' && r.turn.step === 'hand' ? `data-act="play:${id}"` : '')).join('')}</div>
       ${prompt}</div>`;
     center = `<div class="center">${opps}${field}${mine}</div>`;

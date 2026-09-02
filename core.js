@@ -140,6 +140,7 @@ export function newGame({ players, settings = {}, seed = 1 }) {
     scores: Object.fromEntries(players.map(p => [p.id, 0])),
     month: 1, dealer: 0, carry: [], pot: 0, round: null, history: [], log: [],
     finished: false, final: null, rngState: seed | 0,
+    gameId: Math.random().toString(36).slice(2, 10), eventSeq: 0,
   };
   return g;
 }
@@ -193,7 +194,7 @@ export function startRound(g) {
     pot: g.pot || 0, payments: [], captures: Object.fromEntries(g.players.map(p => [p.id, []])),
     teyaku: {}, dekiyaku: {}, sage: {}, firstSage: null, liabilities: [], divingLiab: {},
     turnNo: 0, turn: null, active: [], order: [], ended: null, result: null, twoPlayer: false,
-    lastTurnOf: {}, turnCaptures: [],
+    lastTurnOf: {}, turnCaptures: [], turnEvents: [], lastTurnEvents: [],
   };
   g.pot = 0;
   log(g, `— Manche ${g.month} · donneur (OYA) : ${playerName(g, r.roundDealer)} —`, 'title');
@@ -305,12 +306,14 @@ function placeOnField(g, pid, cardId, source) {
   r.field.push(cardId);
   r.fieldMeta[cardId] = { by: pid, fromHand: source === 'hand', turn: r.turnNo,
     lastTurn: source === 'hand' && handSize(g, pid) === 0 };
+  r.turnEvents.push({ seq: g.eventSeq++, turnNo: r.turnNo, pid, card: cardId, source, captured: [] });
 }
 function capture(g, pid, played, fieldCards, source) {
   const r = g.round;
   r.field = r.field.filter(id => !fieldCards.includes(id));
   r.captures[pid].push(played, ...fieldCards);
   r.turnCaptures.push({ played, fieldCards, source, meta: fieldCards.map(id => r.fieldMeta[id]) });
+  r.turnEvents.push({ seq: g.eventSeq++, turnNo: r.turnNo, pid, card: played, source, captured: fieldCards.slice() });
   fieldCards.forEach(id => delete r.fieldMeta[id]);
   log(g, `${playerName(g, pid)} ${source === 'draw' ? 'pioche' : 'joue'} ${card(played).name} et capture ${byId(fieldCards).map(c => c.name).join(' + ')}.`);
 }
@@ -356,6 +359,7 @@ function afterTurn(g, pid) {
 }
 function nextTurn(g, pid) {
   const r = g.round;
+  r.lastTurnEvents = r.turnEvents; r.turnEvents = [];
   r.turnNo++;
   if (r.active.every(id => r.hands[id].length === 0)) return endRound(g, 'exhausted', null);
   const next = r.order[(r.order.indexOf(pid) + 1) % r.order.length];
@@ -467,6 +471,7 @@ function settle(g) {
 }
 function endRound(g, how, by) {
   const r = g.round;
+  if (r.turnEvents.length) { r.lastTurnEvents = r.turnEvents; r.turnEvents = []; }
   r.phase = 'end'; r.ended = { how, by };
   const nm = { shoubu: `${playerName(g, by)} dit shoubu.`, cancel: `${playerName(g, by)} annule son sage.`, exhausted: 'Mains épuisées.' }[how];
   log(g, nm, 'title');
@@ -556,7 +561,7 @@ export function viewFor(g, pid) {
   const v = {
     version: g.version, settings: g.settings, players: g.players, scores: g.scores, month: g.month,
     dealer: g.dealer, carry: g.carry, pot: g.pot, history: g.history, log: g.log.slice(-60),
-    finished: g.finished, final: g.final, me: pid, legal: legalActions(g, pid), round: null,
+    finished: g.finished, final: g.final, me: pid, legal: legalActions(g, pid), round: null, gameId: g.gameId,
   };
   if (r) {
     v.round = {
@@ -567,6 +572,7 @@ export function viewFor(g, pid) {
       firstSage: r.firstSage, turnNo: r.turnNo, turn: r.turn, active: r.active, order: r.order, ended: r.ended,
       result: r.result, twoPlayer: r.twoPlayer, dropout: r.dropout || null, payments: r.payments,
       turnCaptures: r.turnCaptures.map(tc => ({ played: tc.played, fieldCards: tc.fieldCards, source: tc.source })),
+      turnEvents: r.turnEvents, lastTurnEvents: r.lastTurnEvents,
     };
   }
   return v;

@@ -159,7 +159,7 @@ export class Session {
   _sendView(pid) {
     const v = H.viewFor(this.game, pid);
     v.hostPeer = this.hostPeer; v.connected = Object.fromEntries(this.lobby.players.map(p => [p.id, p.connected]));
-    if (pid === this.me) { this.lastView = v; this.onView && this.onView(v); }
+    if (pid === this.me) { const snap = structuredClone(v); this.lastView = snap; this.onView && this.onView(snap); }   // copie : la vue locale ne doit pas partager l'état vivant du moteur
     else if (this.peerOf[pid] && this.room) this.A.view.send({ view: v }, { target: this.peerOf[pid] });
   }
   _pushViews() {
@@ -182,7 +182,7 @@ export class Session {
     if (!p.bot && !disconnected) return;
     this.botTimer = setTimeout(() => {
       try { const a = botAction(H.viewFor(g, pid)); if (a) this.act(pid, a); } catch (e) { console.error(e); }
-    }, disconnected ? 15000 : 700);
+    }, disconnected ? 15000 : 1800);
   }
 
   // -------------------------------------------------------------- invité

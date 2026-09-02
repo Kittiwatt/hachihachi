@@ -103,6 +103,10 @@ label.chk small { color: var(--muted); display: block; }
 .card.new { box-shadow: 0 0 0 2px #7fd6a5; }
 .card.back img { filter: brightness(.9); }
 @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.06); } }
+.card.anim { box-shadow: 0 0 0 3px #7fd6a5, 0 0 18px #7fd6a5; animation: drop .35s ease-out; z-index: 2; }
+.card.flip { animation: flip .4s ease-out; }
+@keyframes drop { from { transform: translateY(-16px); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes flip { from { transform: rotateY(90deg); } 60% { transform: rotateY(-12deg); } to { transform: rotateY(0); } }
 
 .mine { padding: 8px 12px; }
 .mine .hd { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; }
