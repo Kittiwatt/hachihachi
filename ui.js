@@ -1,6 +1,6 @@
 // ui.js — Interface Hachi-Hachi (accueil, salon, table). Rendu par gabarits, événements délégués.
 import { CARDS } from './cards.js';
-import { DEFAULT_SETTINGS, detectTeyaku } from './core.js';
+import { DEFAULT_SETTINGS, detectTeyaku, cardPoints, chaffCountB } from './core.js';
 import { Session, makeCode } from './net.js';
 
 const app = document.getElementById('app');
@@ -23,6 +23,12 @@ const cardEl = (id, cls = '', extra = '') => { const c = CARDS[id]; return `<div
 const backEl = (cls = '') => `<div class="card back ${cls}"><img src="cards/dos.jpg" alt="" draggable="false"></div>`;
 const pname = pid => { const v = S.view || S.lobby; const p = (v.players || []).find(x => x.id === pid); return p ? p.name : (pid === 'pot' ? 'le pot' : pid); };
 const TYPES = ['bright', 'animal', 'ribbon', 'chaff'];
+const TYPE_FR = { bright: 'lumières', animal: 'animaux', ribbon: 'rubans', chaff: 'écailles' };
+function ptsEl(ids) {
+  const pts = cardPoints(ids), ch = chaffCountB(ids);
+  const detail = TYPES.map(t => `${ids.filter(id => CARDS[id].type === t).length} ${TYPE_FR[t]}`).join(' · ');
+  return `<span class="pts ${pts >= 89 ? 'hi' : ''}" title="${esc(detail)} — ${ch} écaille(s) au sens Seize Écailles (Saule compris)">${pts} pts · ${ch} éc.</span>`;
+}
 const capsEl = (ids, glow = null) => `<div class="caps">${TYPES.map(t => `<div class="grp">${ids.filter(id => CARDS[id].type === t).map(id => cardEl(id, glow && glow.has(id) ? 'anim' : '')).join('')}</div>`).join('')}</div>`;
 
 // ------------------------------------------------------------- session
@@ -241,7 +247,7 @@ function renderTable() {
   if (r) {
     const anim = v.anim || {}, glowF = new Set(anim.glowField || []), glowC = new Set(anim.glowCaps || []);
     const others = P.filter(p => p.id !== me && (r.phase === 'dropout' || active.has(p.id)));
-    const opps = `<div class="opps">${others.map(p => `<div class="panel opp ${turnPid === p.id ? 'turn' : ''}"><div class="hd"><b>${esc(p.name)}</b><span class="handcount" title="${r.handCounts[p.id]} cartes en main">${'<i></i>'.repeat(r.handCounts[p.id] || 0)}</span></div>${r.teyaku[p.id] && r.handCounts[p.id] === 7 ? `<div class="shown"><span class="small muted">montre :</span> ${(r.teyaku[p.id].A ? r.teyaku[p.id].A.cards : []).concat(r.teyaku[p.id].B ? r.teyaku[p.id].B.cards : []).filter((x, i, a) => a.indexOf(x) === i).map(id => cardEl(id)).join('')}</div>` : ''}${capsEl(r.captures[p.id] || [], glowC)}</div>`).join('')}</div>`;
+    const opps = `<div class="opps">${others.map(p => `<div class="panel opp ${turnPid === p.id ? 'turn' : ''}"><div class="hd"><b>${esc(p.name)}</b>${active.has(p.id) && r.phase !== 'dropout' ? ptsEl(r.captures[p.id] || []) : ''}<span class="handcount" title="${r.handCounts[p.id]} cartes en main">${'<i></i>'.repeat(r.handCounts[p.id] || 0)}</span></div>${r.teyaku[p.id] && r.handCounts[p.id] === 7 ? `<div class="shown"><span class="small muted">montre :</span> ${(r.teyaku[p.id].A ? r.teyaku[p.id].A.cards : []).concat(r.teyaku[p.id].B ? r.teyaku[p.id].B.cards : []).filter((x, i, a) => a.indexOf(x) === i).map(id => cardEl(id)).join('')}</div>` : ''}${capsEl(r.captures[p.id] || [], glowC)}</div>`).join('')}</div>`;
 
     const pending = r.phase === 'play' && r.turn.step === 'choose' && r.turn.pid === me ? r.turn.pending : null;
     const placed = new Set([r.turn && r.turn.played, r.turn && r.turn.drawn].filter(x => x != null && r.field.includes(x)));
@@ -268,7 +274,7 @@ function renderTable() {
       else if (r.turn.step === 'decide') prompt = `<div class="prompt"><b>Vous formez ${r.dekiyaku[me].list.map(y => `${esc(y.name)} (${y.value} kan)`).join(' + ')}.</b><div class="actions"><button class="btn primary" data-act="shoubu">Shoubu — j’arrête, on paie</button><button class="btn" data-act="sage">Sage — je continue</button></div><div class="small muted">Sage : vous visez mieux, mais si un autre dit shoubu vous paierez double, et à mains épuisées chacun ne touche que moitié.</div></div>`;
     }
     const myTeyaku = r.hand.length === 7 && r.phase !== 'end' ? detectTeyaku(r.hand) : null;
-    const mine = `<div class="panel mine"><div class="hd"><b>${esc(pname(me))}</b><span class="kan">${fmt(v.scores[me], true)}</span>${tagsOf(me)}${myTeyaku && myTeyaku.total && !r.teyaku[me] ? `<span class="small muted">main : ${[myTeyaku.A && myTeyaku.A.name, myTeyaku.B && myTeyaku.B.name].filter(Boolean).join(' + ')} (${myTeyaku.total} kan)</span>` : ''}</div>
+    const mine = `<div class="panel mine"><div class="hd"><b>${esc(pname(me))}</b><span class="kan">${fmt(v.scores[me], true)}</span>${active.has(me) && r.phase !== 'dropout' ? ptsEl(r.captures[me] || []) : ''}${tagsOf(me)}${myTeyaku && myTeyaku.total && !r.teyaku[me] ? `<span class="small muted">main : ${[myTeyaku.A && myTeyaku.A.name, myTeyaku.B && myTeyaku.B.name].filter(Boolean).join(' + ')} (${myTeyaku.total} kan)</span>` : ''}</div>
       ${capsEl(r.captures[me] || [], glowC)}
       <div class="hand">${r.hand.map(id => cardEl(id, myTurn && r.phase === 'play' && r.turn.step === 'hand' ? 'playable' : '', myTurn && r.phase === 'play' && r.turn.step === 'hand' ? `data-act="play:${id}"` : '')).join('')}</div>
       ${prompt}</div>`;

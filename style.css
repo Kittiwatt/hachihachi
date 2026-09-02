@@ -73,6 +73,9 @@ label.chk small { color: var(--muted); display: block; }
 .opps { display: flex; gap: 8px; flex-wrap: wrap; }
 .opp { flex: 1 1 200px; padding: 6px 8px; min-width: 0; }
 .opp .hd { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.pts { font-size: .82em; padding: .05em .5em; border-radius: 999px; background: #3a2427; border: 1px solid var(--line); color: var(--ivoire); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pts.hi { border-color: var(--gold); color: var(--gold); }
+.opp .hd .pts { margin-left: auto; }
 .opp.turn { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold2) inset; }
 .handcount { display: inline-flex; gap: 2px; }
 .handcount i { display: inline-block; width: 9px; height: 14px; background: #333; border: 1px solid #555; border-radius: 2px; }
