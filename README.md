@@ -11,6 +11,9 @@ Projet Anofelis. Règles d'après [fudawiki](https://fudawiki.org/en/hanafuda/ga
 2. Settings → Pages → *Deploy from a branch* → branche `main`, dossier `/ (root)`.
 3. L'app est servie à `https://<compte>.github.io/<dépôt>/`. Aucune étape de build : ce sont des modules ES natifs.
 
+Avant chaque mise à jour poussée, lancer `python3 tools/bump_version.py` : il tamponne `?v=…` sur les modules et la
+feuille de style, sinon les navigateurs gardent l'ancienne version jusqu'à 10 minutes (cache de GitHub Pages).
+
 Elle fonctionne aussi depuis n'importe quel hébergement statique, ou en local avec `python3 -m http.server`
 (pas en `file://` : les modules ES et `fetch` exigent HTTP).
 

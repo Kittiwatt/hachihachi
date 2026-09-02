@@ -9,8 +9,8 @@
 //   chat   tous → tous    {name, text}
 // Migration : si l'hôte disparaît, le pair connecté au plus petit selfId reconstruit la partie
 // à partir de la dernière vue publique et redistribue la manche en cours (scores conservés).
-import * as H from './core.js';
-import { botAction } from './bot.js';
+import * as H from './core.js?v=202609021955';
+import { botAction } from './bot.js?v=202609021955';
 
 export const APP_ID = 'anofelis-hachihachi-v1';
 const TURN = [{ urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443'],

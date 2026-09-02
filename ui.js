@@ -1,7 +1,7 @@
 // ui.js — Interface Hachi-Hachi (accueil, salon, table). Rendu par gabarits, événements délégués.
-import { CARDS } from './cards.js';
-import { DEFAULT_SETTINGS, detectTeyaku, cardPoints, chaffCountB } from './core.js';
-import { Session, makeCode } from './net.js';
+import { CARDS } from './cards.js?v=202609021955';
+import { DEFAULT_SETTINGS, detectTeyaku, cardPoints, chaffCountB } from './core.js?v=202609021955';
+import { Session, makeCode } from './net.js?v=202609021955';
 
 const app = document.getElementById('app');
 const S = {
@@ -42,7 +42,7 @@ function callbacks() {
   };
 }
 async function loadTrystero() {
-  if (!trystero) { S.status = 'Chargement du module réseau…'; render(); trystero = await import('./vendor/trystero-nostr.min.js'); }
+  if (!trystero) { S.status = 'Chargement du module réseau…'; render(); trystero = await import('./vendor/trystero-nostr.min.js?v=202609021955'); }
   return trystero;
 }
 function readSettings(form) {

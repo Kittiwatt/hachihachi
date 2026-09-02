@@ -2,7 +2,7 @@
 // Pur : aucune dépendance DOM ou réseau. Déterministe (RNG à graine).
 // Tourne dans le navigateur de l'hôte (arbitre) et dans Node (tests).
 // Règles : https://fudawiki.org/en/hanafuda/games/hachi-hachi
-import { CARDS } from './cards.js';
+import { CARDS } from './cards.js?v=202609021955';
 
 export const VERSION = '1.0.0';
 export const DEFAULT_SETTINGS = {
