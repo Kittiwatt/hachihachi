@@ -1,7 +1,7 @@
 // ui.js — Interface Hachi-Hachi (accueil, salon, table). Rendu par gabarits, événements délégués.
-import { CARDS } from './cards.js?v=202609021955';
-import { DEFAULT_SETTINGS, detectTeyaku, cardPoints, chaffCountB } from './core.js?v=202609021955';
-import { Session, makeCode } from './net.js?v=202609021955';
+import { CARDS } from './cards.js?v=202609022003';
+import { DEFAULT_SETTINGS, detectTeyaku, cardPoints, chaffCountB } from './core.js?v=202609022003';
+import { Session, makeCode } from './net.js?v=202609022003';
 
 const app = document.getElementById('app');
 const S = {
@@ -24,6 +24,7 @@ const backEl = (cls = '') => `<div class="card back ${cls}"><img src="cards/dos.
 const pname = pid => { const v = S.view || S.lobby; const p = (v.players || []).find(x => x.id === pid); return p ? p.name : (pid === 'pot' ? 'le pot' : pid); };
 const TYPES = ['bright', 'animal', 'ribbon', 'chaff'];
 const TYPE_FR = { bright: 'lumières', animal: 'animaux', ribbon: 'rubans', chaff: 'écailles' };
+const TYPE_SG = { bright: 'Lumière', animal: 'Animal', ribbon: 'Ruban', chaff: 'Écaille' };
 function ptsEl(ids) {
   const pts = cardPoints(ids), ch = chaffCountB(ids);
   const detail = TYPES.map(t => `${ids.filter(id => CARDS[id].type === t).length} ${TYPE_FR[t]}`).join(' · ');
@@ -42,7 +43,7 @@ function callbacks() {
   };
 }
 async function loadTrystero() {
-  if (!trystero) { S.status = 'Chargement du module réseau…'; render(); trystero = await import('./vendor/trystero-nostr.min.js?v=202609021955'); }
+  if (!trystero) { S.status = 'Chargement du module réseau…'; render(); trystero = await import('./vendor/trystero-nostr.min.js?v=202609022003'); }
   return trystero;
 }
 function readSettings(form) {
@@ -321,6 +322,9 @@ function renderRules() {
     <h3>Dekiyaku (captures)</h3>${T([['12 kan', 'Cinq Lumières — gokou'], ['10 kan', 'Quatre Lumières — shikou', 'sans l’Homme à la pluie'], ['10 kan', 'Sept Rubans — nanatan', 'sans le ruban de Saule'], ['7 kan', 'Rubans-poèmes — akatan', 'Pin, Abricotier, Cerisier'], ['7 kan', 'Rubans bleus — aotan', 'Pivoine, Chrysanthème, Érable'], ['7 kan', 'Sanglier-Cerf-Papillons', 'variante']])}
     <h3>Valeurs et cas spéciaux (3 joueurs, sans dekiyaku)</h3>
     <p>Lumière 20 · Animal 10 · Ruban 5 · Écaille 1 — total 264, par 88. <b>Tous-les-Huit</b> (chacun 88) : l’OYA encaisse 10 kan de chacun. <b>Double-Huit</b> (168+) : 10 kan de chacun, +1 par point au-delà. <b>Seize Écailles</b> (16+, Saule compris) : 12 kan de chacun, +2 par écaille au-delà. Ces cas annulent tout le reste. Hauts faits (1 kan de chacun) : <b>Plongeon</b>, teyaku A avec brelan sans carré puis capture des quatre cartes du mois ; <b>Évasion</b>, teyaku B sauf Une lumière puis 89 points ou plus.</p>
+    <h3>Les 48 cartes, saison par saison</h3>
+    <p>Lumière <b>20</b> · Animal <b>10</b> · Ruban <b>5</b> · Écaille <b>1</b>. Les lumières sont encadrées d’or : en rivière à la donne, Grue, Rideau et Lune font ×2, Pluie et Phénix ×4. La Pluie ne compte pas pour Quatre Lumières. Pour les teyaku du groupe B et Seize Écailles, les quatre cartes du Saule comptent comme des écailles ; le ruban de Saule ne compte pas pour Sept Rubans.</p>
+    <div class="deck">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => { const cs = CARDS.filter(c => c.month === m); return `<div class="season"><div class="lbl"><b>${m}</b> ${esc(cs[0].flower)}</div>${cs.map(c => `<div class="cardv ${c.type}">${cardEl(c.id)}<div class="cap">${TYPE_SG[c.type]}${c.type === 'bright' ? ` <span class="gold">×${c.tag === 'rain' || c.tag === 'phoenix' ? 4 : 2}</span>` : ''}<br><b>${c.pts} pt${c.pts > 1 ? 's' : ''}</b></div></div>`).join('')}</div>`; }).join('')}</div>
     <h3>4 à 6 joueurs : phase d’abandon</h3>
     <p>Après la donne, en partant de l’OYA, chacun annonce « je joue » ou « je passe » jusqu’à trois joueurs. Passer coûte 1 kan, puis 1,5 · 2 · 2,5… au pot (× multiplicateur). Une fois trois joueurs en jeu, les suivants sont forcés dehors et reçoivent une compensation de main des deux actifs non-OYA (moitié des teyaku, moitié des dekiyaku complets, 3 pts par carte utile aux Cinq Lumières / Rubans-poèmes / Rubans bleus). Les mains inactives retournent dans la pioche. Le vainqueur de la manche ramasse le pot.</p>
     <div class="actions"><button class="btn" data-act="closemodal">Fermer</button></div></div></div>`;
