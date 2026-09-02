@@ -9,8 +9,8 @@
 //   chat   tous → tous    {name, text}
 // Migration : si l'hôte disparaît, le pair connecté au plus petit selfId reconstruit la partie
 // à partir de la dernière vue publique et redistribue la manche en cours (scores conservés).
-import * as H from './core.js?v=202609022110';
-import { botAction } from './bot.js?v=202609022110';
+import * as H from './core.js?v=202609022124';
+import { botAction } from './bot.js?v=202609022124';
 
 export const APP_ID = 'anofelis-hachihachi-v1';
 // ---------------------------------------------------------------- TURN
@@ -19,7 +19,7 @@ export const APP_ID = 'anofelis-hachihachi-v1';
 const STATIC_AUTH = { host: 'staticauth.openrelay.metered.ca', secret: 'openrelayprojectsecret' };
 export async function iceServers() {
   let cfg = {};
-  try { cfg = await import('./config.js?v=202609022110'); } catch (e) { /* pas de config.js */ }
+  try { cfg = await import('./config.js?v=202609022124'); } catch (e) { /* pas de config.js */ }
   if (cfg.TURN_CREDENTIALS_URL) {
     try {
       const r = await fetch(cfg.TURN_CREDENTIALS_URL, { cache: 'no-store' });
