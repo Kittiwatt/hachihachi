@@ -9,18 +9,62 @@
 //   chat   tous → tous    {name, text}
 // Migration : si l'hôte disparaît, le pair connecté au plus petit selfId reconstruit la partie
 // à partir de la dernière vue publique et redistribue la manche en cours (scores conservés).
-import * as H from './core.js?v=202609022003';
-import { botAction } from './bot.js?v=202609022003';
+import * as H from './core.js?v=202609022110';
+import { botAction } from './bot.js?v=202609022110';
 
 export const APP_ID = 'anofelis-hachihachi-v1';
-const TURN = [{ urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443'],
-  username: 'openrelayproject', credential: 'openrelayproject' }];   // secours public (Open Relay), sans compte
+// ---------------------------------------------------------------- TURN
+// Ordre : config.js (URL de credentials Metered ou liste explicite) puis repli Open Relay en
+// authentification statique : identifiants temporaires dérivés du secret publié (12 h).
+const STATIC_AUTH = { host: 'staticauth.openrelay.metered.ca', secret: 'openrelayprojectsecret' };
+export async function iceServers() {
+  let cfg = {};
+  try { cfg = await import('./config.js?v=202609022110'); } catch (e) { /* pas de config.js */ }
+  if (cfg.TURN_CREDENTIALS_URL) {
+    try {
+      const r = await fetch(cfg.TURN_CREDENTIALS_URL, { cache: 'no-store' });
+      if (r.ok) { const list = await r.json(); if (Array.isArray(list) && list.length) return { servers: list, source: 'config-url' }; }
+    } catch (e) { console.warn('TURN_CREDENTIALS_URL injoignable, repli', e); }
+  }
+  if (Array.isArray(cfg.TURN_SERVERS) && cfg.TURN_SERVERS.length) return { servers: cfg.TURN_SERVERS, source: 'config-list' };
+  return { servers: await staticAuthServers(), source: 'openrelay-static' };
+}
+export async function staticAuthServers(ttlSeconds = 12 * 3600, now = Date.now()) {
+  const username = `${Math.floor(now / 1000) + ttlSeconds}:hachihachi`;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(STATIC_AUTH.secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(username)));
+  const credential = btoa(String.fromCharCode(...sig));
+  const h = STATIC_AUTH.host;
+  return [{ urls: [`turn:${h}:80`, `turn:${h}:443`, `turn:${h}:80?transport=tcp`, `turn:${h}:443?transport=tcp`, `turns:${h}:443`], username, credential }];
+}
+// Diagnostic : collecte de candidats ICE avec les serveurs donnés. relay = un TURN répond.
+export function diagnose(servers, ms = 8000) {
+  return new Promise(resolve => {
+    const t0 = Date.now(), types = new Set(), errors = [];
+    let pc;
+    try { pc = new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }, ...servers] }); }
+    catch (e) { return resolve({ ok: false, host: false, srflx: false, relay: false, errors: [String(e)], ms: 0 }); }
+    const done = () => { pc.close(); resolve({ ok: types.has('relay'), host: types.has('host'), srflx: types.has('srflx'), relay: types.has('relay'), errors, ms: Date.now() - t0 }); };
+    pc.onicecandidate = e => { if (e.candidate) { types.add(e.candidate.type); if (types.has('relay') && types.has('srflx')) done(); } else done(); };
+    pc.onicecandidateerror = e => { if (e.errorCode >= 700 || e.errorCode === 401) errors.push(`${e.url || ''} ${e.errorCode} ${e.errorText || ''}`.trim()); };
+    pc.createDataChannel('diag');
+    pc.createOffer().then(o => pc.setLocalDescription(o)).catch(e => { errors.push(String(e)); done(); });
+    setTimeout(done, ms);
+  });
+}
+const explainJoinError = d => {
+  const raw = (d && d.error && d.error.message) || (d && d.error) || 'inconnu';
+  if (/after exchanging SDP|TURN/i.test(raw)) return "Impossible d'établir la liaison avec un joueur : un des deux réseaux bloque le pair-à-pair et le relais TURN n'a pas suffi. Utilisez « Tester ma connexion » sur l'accueil (chacun de son côté), essayez un autre réseau (partage 4G), ou configurez un relais TURN dans config.js (voir README).";
+  return 'Connexion impossible : ' + raw;
+};
 
 export const makeCode = () => Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
 const rndToken = () => Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
 export class Session {
-  constructor({ code, name, isHost, settings, onView, onLobby, onStatus, onError, onChat, trystero, local = false }) {
+  constructor({ code, name, isHost, settings, onView, onLobby, onStatus, onError, onChat, trystero, local = false, ice = [] }) {
+    this.ice = ice;
     this.code = code; this.name = name; this.isHost = isHost; this.local = local;
     this.onView = onView; this.onLobby = onLobby; this.onStatus = onStatus; this.onError = onError; this.onChat = onChat;
     this.settings = settings || {};
@@ -39,8 +83,8 @@ export class Session {
   // ------------------------------------------------------------ transport
   _connect(T) {
     this.T = T;
-    this.room = T.joinRoom({ appId: APP_ID, turnConfig: TURN }, this.code, {
-      onJoinError: d => this.onError && this.onError('Connexion impossible : ' + (d.error && d.error.message || d.error || 'inconnu')),
+    this.room = T.joinRoom({ appId: APP_ID, turnConfig: this.ice }, this.code, {
+      onJoinError: d => this.onError && this.onError(explainJoinError(d)),
     });
     this.selfId = T.selfId;
     const mk = n => this.room.makeAction(n);

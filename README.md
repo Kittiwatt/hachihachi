@@ -26,6 +26,12 @@ Elle fonctionne aussi depuis n'importe quel hébergement statique, ou en local a
 - **Mise en relation** : [Trystero](https://github.com/dmotz/trystero) (stratégie Nostr, relais publics, aucun compte),
   puis WebRTC direct entre navigateurs. Un serveur TURN public (Open Relay) sert de secours pour les réseaux
   restrictifs — sans garantie absolue.
+- **Relais TURN** : quand deux joueurs ne peuvent pas se joindre en direct (4G, box restrictive, réseau
+  d'entreprise), le trafic passe par un relais. Sans réglage, l'app utilise Open Relay en authentification
+  statique (gratuit, sans compte, sans garantie). **Recommandé** : créer un compte gratuit Open Relay
+  (https://www.metered.ca/tools/openrelay/, 20 Go/mois — largement assez pour des parties de cartes), récupérer
+  l'URL de credentials du tableau de bord et la coller dans `config.js` (`TURN_CREDENTIALS_URL`). Le bouton
+  « Tester ma connexion » de l'accueil dit si un relais est joignable depuis votre réseau.
 - **Reconnexion** : un jeton par table est gardé dans `localStorage`. Revenir sur la même table (même lien) rend
   le même siège et la même main. Un joueur déconnecté est joué par l'hôte après 15 s pour ne pas bloquer la table.
 - **Migration d'hôte** : si l'hôte disparaît, le joueur connecté dont l'identifiant de pair est le plus petit
@@ -40,7 +46,8 @@ Elle fonctionne aussi depuis n'importe quel hébergement statique, ou en local a
 |---|---|
 | `core.js` | Moteur pur (aucune dépendance) : cartes, teyaku, dekiyaku, donne, multiplicateur, abandon, tours, sage/shoubu/annulation, paiements, cas spéciaux, hauts faits, variantes. Déterministe (RNG à graine). |
 | `bot.js` | Bot simple (glouton, sens des yaku, abandon selon la force de la main). |
-| `net.js` | Session hôte/invité sur Trystero : protocole, sièges, jetons, reconnexion, migration. |
+| `net.js` | Session hôte/invité sur Trystero : protocole, sièges, jetons, reconnexion, migration, serveurs TURN, diagnostic. |
+| `config.js` | Réglages de déploiement : relais TURN (URL de credentials Metered ou liste explicite). |
 | `ui.js`, `index.html`, `style.css` | Interface (accueil, salon, table, résultats, historique, aide). |
 | `cards.js`, `cards/` | Données et images des 48 cartes (générées par `tools/gen_cards.py` depuis le zip fudawiki). |
 | `vendor/trystero-nostr.min.js` | Bundle ESM autonome de `@trystero-p2p/nostr` 0.25.4 (esbuild). |

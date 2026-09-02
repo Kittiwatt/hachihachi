@@ -1,7 +1,7 @@
 // bot.js — Bot simple pour compléter une table ou jouer seul.
 // Ne reçoit que la vue filtrée (viewFor) : il ne triche pas.
-import { CARDS } from './cards.js?v=202609022003';
-import { detectTeyaku, detectDekiyaku, YAKU_SETS, cardPoints } from './core.js?v=202609022003';
+import { CARDS } from './cards.js?v=202609022110';
+import { detectTeyaku, detectDekiyaku, YAKU_SETS, cardPoints } from './core.js?v=202609022110';
 
 const card = id => CARDS[id];
 

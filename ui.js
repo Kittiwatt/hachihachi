@@ -1,7 +1,7 @@
 // ui.js — Interface Hachi-Hachi (accueil, salon, table). Rendu par gabarits, événements délégués.
-import { CARDS } from './cards.js?v=202609022003';
-import { DEFAULT_SETTINGS, detectTeyaku, cardPoints, chaffCountB } from './core.js?v=202609022003';
-import { Session, makeCode } from './net.js?v=202609022003';
+import { CARDS } from './cards.js?v=202609022110';
+import { DEFAULT_SETTINGS, detectTeyaku, cardPoints, chaffCountB } from './core.js?v=202609022110';
+import { Session, makeCode, iceServers, diagnose } from './net.js?v=202609022110';
 
 const app = document.getElementById('app');
 const S = {
@@ -42,8 +42,25 @@ function callbacks() {
     onChat: m => { S.chat.push(m); if (S.chat.length > 80) S.chat.shift(); render(); },
   };
 }
+async function prepareIce() {
+  if (S.ice) return S.ice.servers;
+  S.status = 'Préparation du relais réseau…'; render();
+  try { S.ice = await iceServers(); } catch (e) { S.ice = { servers: [], source: 'aucun' }; }
+  return S.ice.servers;
+}
+async function runDiagnostic() {
+  S.diag = { running: true }; render();
+  const servers = await prepareIce();
+  const d = await diagnose(servers);
+  const src = { 'config-url': 'relais configuré (config.js)', 'config-list': 'relais configuré (config.js)', 'openrelay-static': 'Open Relay (repli sans compte)', aucun: 'aucun relais' }[S.ice.source] || S.ice.source;
+  d.text = d.relay ? `Relais TURN joignable (${src}) en ${d.ms} ms : les parties devraient passer même derrière une box ou en 4G.`
+    : d.srflx ? `Pas de relais TURN (${src}) : connexion directe possible seulement si l'autre joueur n'est pas derrière un réseau restrictif. Renseignez un relais dans config.js (voir README).`
+    : `Aucun candidat réseau public : ce réseau bloque le pair-à-pair. Essayez un autre réseau (partage 4G).`;
+  if (d.errors.length) d.text += ' Détail : ' + d.errors.slice(0, 2).join(' ; ');
+  S.diag = d; S.status = ''; render();
+}
 async function loadTrystero() {
-  if (!trystero) { S.status = 'Chargement du module réseau…'; render(); trystero = await import('./vendor/trystero-nostr.min.js?v=202609022003'); }
+  if (!trystero) { S.status = 'Chargement du module réseau…'; render(); trystero = await import('./vendor/trystero-nostr.min.js?v=202609022110'); }
   return trystero;
 }
 function readSettings(form) {
@@ -57,8 +74,9 @@ async function create(form, local) {
   try {
     const name = saveName(form), settings = readSettings(form);
     const T = local ? null : await loadTrystero();
+    const ice = local ? [] : await prepareIce();
     resetAnim();
-    S.session = new Session({ code: local ? 'SOLO' : makeCode(), name, isHost: true, settings, trystero: T, local, ...callbacks() });
+    S.session = new Session({ code: local ? 'SOLO' : makeCode(), name, isHost: true, settings, trystero: T, local, ice, ...callbacks() });
     if (local) { S.session.addBot(); S.session.addBot(); }
     S.screen = 'lobby'; S.status = local ? '' : 'Table créée. Partagez le code ou le lien.'; render();
   } catch (e) { S.error = e.message; render(); }
@@ -68,8 +86,9 @@ async function join(form) {
     const name = saveName(form); const code = (new FormData(form).get('code') || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code.length < 4) throw new Error('Code de table invalide');
     const T = await loadTrystero();
+    const ice = await prepareIce();
     resetAnim();
-    S.session = new Session({ code, name, isHost: false, trystero: T, ...callbacks() });
+    S.session = new Session({ code, name, isHost: false, trystero: T, ice, ...callbacks() });
     S.screen = 'lobby'; S.lobby = null; render();
   } catch (e) { S.error = e.message; render(); }
 }
@@ -183,6 +202,7 @@ function renderHome() {
         <p class="small muted">Si vous revenez après une déconnexion, utilisez le même code : votre siège vous attend.</p>
       </form>
     </div>
+    <div class="panel" style="margin-top:16px"><div class="row"><b>Réseau</b><button class="btn small" data-act="diag" ${S.diag && S.diag.running ? 'disabled' : ''}>${S.diag && S.diag.running ? 'Test en cours…' : 'Tester ma connexion'}</button><span class="small ${S.diag && !S.diag.running ? (S.diag.relay ? 'pos' : 'neg') : 'muted'}">${S.diag && !S.diag.running ? esc(S.diag.text) : 'Vérifie que le relais TURN est joignable depuis votre réseau (à faire par chaque joueur en cas d’échec de connexion).'}</span></div></div>
     <p class="small muted" style="text-align:center;margin-top:2em"><a href="#" data-act="rules">Aide : combinaisons et déroulé</a> · Règles d’après <a href="https://fudawiki.org/en/hanafuda/games/hachi-hachi" target="_blank" rel="noopener">fudawiki</a> · Anofelis</p>
   </div>`;
 }
@@ -364,6 +384,7 @@ app.addEventListener('click', e => {
     case 'drop': act_(() => act({ type: 'dropout', choice: arg })); break;
     case 'next': S.modal = null; S.session.nextRound(); break;
     case 'newgame': { S.modal = null; const ses = S.session; ses.lobby.started = false; ses.game = null; S.view = null; S.screen = 'lobby'; ses._broadcastLobby(); render(); break; }
+    case 'diag': runDiagnostic(); break;
     case 'rules': S.modal = 'rules'; render(); break;
     case 'history': S.modal = 'history'; render(); break;
     case 'closemodal': if (e.target !== t && t.classList.contains('overlay')) return; S.modal = (S.view && S.view.round && S.view.round.phase === 'end') ? 'closed' : null; render(); break;
