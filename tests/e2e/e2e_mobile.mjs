@@ -1,0 +1,14 @@
+import { chromium, devices } from 'playwright';
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+const page = await ctx.newPage();
+const errors = [];
+page.on('pageerror', e => errors.push(e.message));
+await page.goto('http://localhost:8765/');
+await page.screenshot({ path: '/tmp/m1_home.png', fullPage: true });
+await page.fill('form[data-form=create] input[name=name]', 'Léaxel');
+await page.tap('[data-act=solo]'); await page.waitForSelector('[data-act=start]'); await page.tap('[data-act=start]'); await page.waitForSelector('.table');
+await page.waitForTimeout(800);
+await page.screenshot({ path: '/tmp/m2_table.png', fullPage: true });
+console.log('erreurs', errors.length, errors.slice(0, 3));
+await browser.close();
